@@ -2,11 +2,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
+import { buildSummarizePrompt } from '../ai/prompt.js';
+import { completeWithAi, hasAiCredentials } from '../ai/provider.js';
 import {
   CliError,
-  completeWithAi,
   handleCommandError,
-  hasAiCredentials,
   loadGlobalConfig,
   parsePositiveInteger,
   readStdin,
@@ -17,12 +17,6 @@ import {
 
 const ONE_MEGABYTE = 1024 * 1024;
 const LARGE_FILE_TAIL_LINES = 500;
-
-const SYSTEM_PROMPT = [
-  'You are a log analysis expert.',
-  'Summarize errors, warnings, key events, likely root causes, and concrete next steps.',
-  'Be structured and concise.',
-].join(' ');
 
 export function registerSummarizeCommand(program) {
   program
@@ -35,9 +29,9 @@ export function registerSummarizeCommand(program) {
     .addHelpText('after', `
 
 Examples:
-  $ kaks summarize logs/server-error.log
-  $ kaks summarize app.log --tail 200
-  $ Get-Content app.log | kaks summarize -
+  $ perky summarize logs/server-error.log
+  $ perky summarize app.log --tail 200
+  $ Get-Content app.log | perky summarize -
 `)
     .action(async (logfile, options) => {
       try {
@@ -78,25 +72,20 @@ export async function summarize(logfile, options = {}) {
 
   if (!hasAiCredentials(config)) {
     printLocalSummary(localSummary);
-    console.warn('\nAI insight skipped because no provider credentials are configured. Run "kaks init" to set them up.');
+    console.warn('\nAI insight skipped because no provider credentials are configured. Run "perky init" to set them up.');
     return;
   }
 
-  const prompt = [
-    `Log source: ${input.label}`,
-    `Line count: ${localSummary.lines}`,
-    `Errors: ${localSummary.errors}`,
-    `Warnings: ${localSummary.warnings}`,
-    '',
-    'Log content:',
-    '```log',
-    content,
-    '```',
-  ].join('\n');
+  const { systemPrompt, userPrompt } = buildSummarizePrompt(content, {
+    label: input.label,
+    lines: localSummary.lines,
+    errors: localSummary.errors,
+    warnings: localSummary.warnings,
+  });
 
   const summary = await runWithSpinner(`Analyzing ${localSummary.lines} lines...`, () => completeWithAi({
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt: prompt,
+    systemPrompt,
+    userPrompt,
     config,
     model: options.model,
   }));

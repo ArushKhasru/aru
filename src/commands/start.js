@@ -15,9 +15,9 @@ export function registerStartCommand(program) {
     .addHelpText('after', `
 
 Examples:
-  $ kaks start myapp
-  $ kaks start myapp --only frontend
-  $ kaks start myapp --detach
+  $ perky start myapp
+  $ perky start myapp --only frontend
+  $ perky start myapp --detach
 `)
     .action(async (projectName, options) => {
       try {
@@ -41,7 +41,7 @@ export async function startProject(projectName, options = {}) {
   }
 
   if (!services.length) {
-    throw new CliError(`No start commands configured for "${name}". Add services with "kaks config add-project" or edit ${project.path}.`);
+    throw new CliError(`No start commands configured for "${name}". Add services with "perky config add-project" or edit ${project.path}.`);
   }
 
   console.log(`Starting project: ${name}\n`);

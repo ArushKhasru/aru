@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -7,22 +6,25 @@ import inquirer from 'inquirer';
 import {
   CONFIG_PATH,
   CliError,
+  assertExecutableCommand,
   deleteByPath,
   getByPath,
   handleCommandError,
   loadGlobalConfig,
   parseConfigValue,
+  resolveExistingDirectoryPath,
   resolveUserPath,
   saveGlobalConfig,
   setByPath,
   validateConfigValue,
 } from './shared.js';
 import { launchEditor } from '../workspace/opener.js';
+import { resolveStoredProjectName } from '../workspace/resolver.js';
 
 export function registerConfigCommand(program) {
   const configCommand = program
     .command('config')
-    .description('Manage global kaks configuration');
+    .description('Manage global perky configuration');
 
   configCommand
     .command('set <key> <value>')
@@ -126,13 +128,16 @@ export async function listConfig() {
 
 export async function addProject(name, options = {}) {
   const config = await loadGlobalConfig();
+  config.projects ??= {};
+  const existingName = resolveStoredProjectName(config.projects, name);
+  const savedName = existingName ?? name;
 
-  if (config.projects?.[name] && !options.yes) {
+  if (existingName && !options.yes) {
     const { overwrite } = await inquirer.prompt([
       {
         type: 'confirm',
         name: 'overwrite',
-        message: `Project "${name}" already exists. Replace it?`,
+        message: `Project "${existingName}" already exists. Replace it?`,
         default: false,
       },
     ]);
@@ -144,8 +149,8 @@ export async function addProject(name, options = {}) {
   }
 
   const answers = await promptForMissingProjectFields(name, options);
-  const projectPath = resolveUserPath(answers.path);
-  await assertDirectoryExists(projectPath);
+  const projectPath = await resolveExistingDirectoryPath(answers.path, process.cwd(), 'Project path');
+  await assertExecutableCommand(answers.editor, 'Editor command');
 
   const services = parseServices(answers.services, projectPath);
   await assertServiceDirectoriesExist(services, projectPath);
@@ -157,21 +162,21 @@ export async function addProject(name, options = {}) {
     services: services.length ? services : undefined,
   };
 
-  config.projects ??= {};
-  config.projects[name] = removeUndefined(project);
+  config.projects[savedName] = removeUndefined(project);
 
   await saveGlobalConfig(config);
-  console.log(`Added project "${name}" -> ${projectPath}`);
+  console.log(`Added project "${savedName}" -> ${projectPath}`);
 
   if (!project.startCmd && !services.length) {
-    console.log(`No start command was saved. Add one later with "kaks config set projects.${name}.startCmd <cmd>".`);
+    console.log(`No start command was saved. Add one later with "perky config set projects.${savedName}.startCmd <cmd>".`);
   }
 }
 
 export async function removeProject(name, options = {}) {
   const config = await loadGlobalConfig();
+  const savedName = resolveStoredProjectName(config.projects ?? {}, name);
 
-  if (!config.projects?.[name]) {
+  if (!savedName) {
     throw new CliError(`Project not found: ${name}`);
   }
 
@@ -180,7 +185,7 @@ export async function removeProject(name, options = {}) {
       {
         type: 'confirm',
         name: 'confirmed',
-        message: `Remove project "${name}"?`,
+        message: `Remove project "${savedName}"?`,
         default: false,
       },
     ]);
@@ -191,9 +196,9 @@ export async function removeProject(name, options = {}) {
     }
   }
 
-  deleteByPath(config, `projects.${name}`);
+  deleteByPath(config, `projects.${savedName}`);
   await saveGlobalConfig(config);
-  console.log(`Removed project "${name}".`);
+  console.log(`Removed project "${savedName}".`);
 }
 
 export async function editConfig() {
@@ -245,7 +250,7 @@ async function promptForMissingProjectFields(name, options) {
     questions.push({
       type: 'confirm',
       name: 'addServices',
-      message: 'Add separate services for kaks start?',
+      message: 'Add separate services for perky start?',
       default: false,
     });
     questions.push({
@@ -271,19 +276,7 @@ async function promptForMissingProjectFields(name, options) {
 }
 
 async function assertDirectoryExists(projectPath) {
-  let stat;
-  try {
-    stat = await fs.stat(projectPath);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      throw new CliError(`Project path does not exist: ${projectPath}`, { cause: error });
-    }
-    throw error;
-  }
-
-  if (!stat.isDirectory()) {
-    throw new CliError(`Project path is not a directory: ${projectPath}`);
-  }
+  await resolveExistingDirectoryPath(projectPath, process.cwd(), 'Project path');
 }
 
 async function assertServiceDirectoriesExist(services, projectPath) {

@@ -1,30 +1,30 @@
-# kaks CLI
+# perky CLI
 
 AI-powered developer assistant and workspace launcher for Windows-first workflows.
 
 **Status:** Work in progress. Core commands are implemented and usable.
 
 ## What works today
-- `kaks init` interactive setup for provider, model, editor, and optional project registration
-- `kaks ask` AI Q&A with optional clipboard copy
-- `kaks explain` AI file explanations with detail/section controls
-- `kaks summarize` log summarization with local JSON summary and optional AI insight
-- `kaks open` open project editor, browser URLs, and file explorer
-- `kaks start` run configured services concurrently (attached or detached)
-- `kaks go` normalize/open/copy/print URLs quickly
-- `kaks config` set/get/list/add-project/remove-project/edit global config
+- `perky init` interactive setup for provider, model, editor, and optional project registration
+- `perky ask` AI Q&A with optional clipboard copy
+- `perky explain` AI file explanations with detail/section controls
+- `perky summarize` log summarization with local JSON summary and optional AI insight
+- `perky open` open project editor, browser URLs, terminal, and file explorer
+- `perky start` run configured services concurrently (attached or detached)
+- `perky go` normalize/open/copy/print URLs quickly
+- `perky config` set/get/list/add-project/remove-project/edit global config
 
 ## Install (local dev)
 ```bash
-git clone https://github.com/ArushKhasru/Kaks.git
-cd kaks
+git clone https://github.com/ArushKhasru/perky.git
+cd perky
 npm install
 npm link
 ```
 
 Then run:
 ```bash
-kaks --help
+perky --help
 ```
 
 You can also run directly:
@@ -34,23 +34,23 @@ node cli.js --help
 
 ## Quick start
 ```bash
-kaks init
-kaks ask "How do I read a file async in Node.js?"
-kaks explain package.json
-kaks summarize app.log --tail 200
-kaks open myapp
-kaks start myapp
-kaks go github.com
+perky init
+perky ask "How do I read a file async in Node.js?"
+perky explain package.json
+perky summarize app.log --tail 200
+perky open myapp
+perky start myapp
+perky go github.com
 ```
 
 ## Configuration
-Global config is stored at `~/.kaks/config.json`. Project-local config is `.kaks.json`.
+Global config is stored at `~/.perky/config.json`. Project-local config is `.perky.json`.
 
 Environment variables:
 - `GEMINI_API_KEY`
 - `OPENAI_API_KEY`
 
-`kaks init` can also write the key into a local `.env` file.
+`perky init` can also write the key into a local `.env` file.
 
 Example config:
 ```jsonc
@@ -80,7 +80,7 @@ Example config:
 }
 ```
 
-`kaks ask` reads `ai.context` from `.kaks.json` to enrich prompts.
+`perky ask` reads `ai.context` from `.perky.json` to enrich prompts.
 
 ## AI providers
 - **Gemini**: uses `GEMINI_API_KEY`

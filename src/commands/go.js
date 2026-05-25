@@ -14,10 +14,10 @@ export function registerGoCommand(program) {
     .addHelpText('after', `
 
 Examples:
-  $ kaks go github.com
-  $ kaks go github.com/ArushKhasru/kaks
-  $ kaks go localhost:3000
-  $ kaks go docs.google.com --copy
+  $ perky go github.com
+  $ perky go github.com/ArushKhasru/perky
+  $ perky go localhost:3000
+  $ perky go docs.google.com --copy
 `)
     .action(async (url, options) => {
       try {

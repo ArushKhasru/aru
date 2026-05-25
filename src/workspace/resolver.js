@@ -2,27 +2,31 @@ import process from 'node:process';
 
 import inquirer from 'inquirer';
 
-import { CliError, resolveUserPath } from '../commands/shared.js';
+import { CliError, resolveExistingDirectoryPath, resolveUserPath } from '../commands/shared.js';
 
 export async function resolveProject(config, requestedName) {
   const projects = config.projects ?? {};
   const projectNames = Object.keys(projects);
 
   if (!projectNames.length) {
-    throw new CliError('No projects configured. Add one with: kaks config add-project <name> --path <path>');
+    throw new CliError('No projects configured. Add one with: perky config add-project <name> --path <path>');
   }
 
-  const name = requestedName ?? await promptForProjectName(projectNames);
+  const requestedProjectName = requestedName ?? await promptForProjectName(projectNames);
+  const name = resolveStoredProjectName(projects, requestedProjectName);
 
-  if (!Object.hasOwn(projects, name)) {
-    const suggestion = getClosestMatch(name, projectNames);
+  if (!name) {
+    const suggestion = getClosestMatch(requestedProjectName, projectNames);
     const hint = suggestion ? ` Did you mean "${suggestion}"?` : '';
-    throw new CliError(`Unknown project "${name}".${hint}`);
+    throw new CliError(`Unknown project "${requestedProjectName}".${hint}`);
   }
+
+  const project = normalizeProject(name, projects[name], config.defaults ?? {});
+  project.path = await resolveExistingDirectoryPath(project.path, process.cwd(), 'Project path');
 
   return {
     name,
-    project: normalizeProject(name, projects[name], config.defaults ?? {}),
+    project,
   };
 }
 
@@ -34,8 +38,28 @@ export function normalizeProject(name, project = {}, defaults = {}) {
     name,
     path: projectPath,
     editor: project.editor ?? defaults.editor ?? 'code',
+    shell: project.shell ?? defaults.shell,
     browserCommand: project.browserCommand ?? project.browserName ?? defaults.browser ?? 'default',
   };
+}
+
+export function resolveStoredProjectName(projects, requestedName) {
+  if (!requestedName) {
+    return null;
+  }
+
+  if (Object.hasOwn(projects, requestedName)) {
+    return requestedName;
+  }
+
+  const normalizedName = String(requestedName).toLowerCase();
+  const matches = Object.keys(projects).filter((name) => name.toLowerCase() === normalizedName);
+
+  if (matches.length > 1) {
+    throw new CliError(`Project name "${requestedName}" matches multiple configured projects: ${matches.join(', ')}. Use the exact name.`);
+  }
+
+  return matches[0] ?? null;
 }
 
 export function getProjectOpenUrls(project) {

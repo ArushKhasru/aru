@@ -3,38 +3,18 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
-import axios from 'axios';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import ora from 'ora';
 
-export const CONFIG_DIR = path.join(os.homedir(), '.kaks');
+import { AI_PROVIDER_DEFAULTS, AiConfigError, completeWithAi, hasAiCredentials, normalizeAiError } from '../ai/provider.js';
+import { CliError } from '../utils/errors.js';
+
+export { AI_PROVIDER_DEFAULTS, AiConfigError, CliError, completeWithAi, hasAiCredentials, normalizeAiError };
+
+export const CONFIG_DIR = process.env.perky_CONFIG_DIR || path.join(os.homedir(), '.perky');
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
-export const LOCAL_CONFIG_NAME = '.kaks.json';
-
-const AI_PROVIDER_DEFAULTS = {
-  gemini: { model: 'gemini-2.0-flash', envKey: 'GEMINI_API_KEY' },
-  openai: { model: 'gpt-4o-mini', envKey: 'OPENAI_API_KEY' },
-  ollama: { model: 'llama3.1', envKey: 'LLAMA_API_KEY' },
-};
-
-export class CliError extends Error {
-  constructor(message, options = {}) {
-    super(message);
-    this.name = 'CliError';
-    this.exitCode = options.exitCode ?? 1;
-    this.cause = options.cause;
-  }
-}
-
-export class AiConfigError extends CliError {
-  constructor(provider) {
-    const envKey = AI_PROVIDER_DEFAULTS[provider]?.envKey;
-    const suffix = envKey ? ` Set ${envKey} or run "kaks init".` : ' Run "kaks init" to configure AI.';
-    super(`API key not found for ${provider}.${suffix}`);
-    this.name = 'AiConfigError';
-  }
-}
+export const LOCAL_CONFIG_NAME = '.perky.json';
 
 export function getDefaultConfig() {
   return {
@@ -189,6 +169,103 @@ export function resolveUserPath(inputPath, basePath = process.cwd()) {
   return path.resolve(basePath, expanded);
 }
 
+export async function resolveExistingDirectoryPath(inputPath, basePath = process.cwd(), label = 'Path') {
+  const absolutePath = resolveUserPath(inputPath, basePath);
+  let stat;
+
+  try {
+    stat = await fs.stat(absolutePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+
+    const caseResolvedPath = await resolvePathCaseInsensitive(absolutePath);
+    if (!caseResolvedPath || caseResolvedPath === absolutePath) {
+      throw new CliError(`${label} does not exist: ${absolutePath}`, { cause: error });
+    }
+
+    try {
+      stat = await fs.stat(caseResolvedPath);
+      if (!stat.isDirectory()) {
+        throw new CliError(`${label} is not a directory: ${caseResolvedPath}`);
+      }
+      return caseResolvedPath;
+    } catch (caseError) {
+      if (caseError instanceof CliError) {
+        throw caseError;
+      }
+      throw new CliError(`${label} does not exist: ${absolutePath}`, { cause: error });
+    }
+  }
+
+  if (!stat.isDirectory()) {
+    throw new CliError(`${label} is not a directory: ${absolutePath}`);
+  }
+
+  return await resolvePathCaseInsensitive(absolutePath) ?? absolutePath;
+}
+
+export async function assertExecutableCommand(command, label = 'Command') {
+  const normalizedCommand = String(command ?? '').trim();
+  if (!normalizedCommand) {
+    return;
+  }
+
+  if (path.isAbsolute(normalizedCommand) || normalizedCommand.includes(path.sep)) {
+    try {
+      const stat = await fs.stat(normalizedCommand);
+      if (stat.isFile()) {
+        return;
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    throw new CliError(`${label} not found: ${normalizedCommand}`);
+  }
+
+  const checker = process.platform === 'win32'
+    ? { command: 'where.exe', args: [normalizedCommand] }
+    : { command: 'sh', args: ['-lc', `command -v -- ${shellSingleQuote(normalizedCommand)}`] };
+
+  try {
+    await execa(checker.command, checker.args, { stdio: 'ignore' });
+  } catch (error) {
+    throw new CliError(`${label} not found: ${normalizedCommand}`, { cause: error });
+  }
+}
+
+async function resolvePathCaseInsensitive(absolutePath) {
+  const parsed = path.parse(absolutePath);
+  const parts = path.relative(parsed.root, absolutePath).split(path.sep).filter(Boolean);
+  let currentPath = parsed.root;
+
+  try {
+    for (const part of parts) {
+      const entries = await fs.readdir(currentPath);
+      const exact = entries.find((entry) => entry === part);
+      const insensitive = exact ?? entries.find((entry) => entry.toLowerCase() === part.toLowerCase());
+
+      if (!insensitive) {
+        return null;
+      }
+
+      currentPath = path.join(currentPath, insensitive);
+    }
+  } catch {
+    return null;
+  }
+
+  return currentPath || absolutePath;
+}
+
+function shellSingleQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
 export async function copyToClipboard(text) {
   const candidates = process.platform === 'win32'
     ? [{ command: 'clip', args: [] }]
@@ -310,135 +387,7 @@ export function parsePositiveInteger(value, fallback = undefined) {
   return parsed ?? fallback;
 }
 
-export function hasAiCredentials(config, provider = config.ai?.provider ?? 'gemini') {
-  const normalizedProvider = provider.toLowerCase();
-  if (normalizedProvider === 'ollama') {
-    return true;
-  }
 
-  const envKey = AI_PROVIDER_DEFAULTS[normalizedProvider]?.envKey;
-  return Boolean((envKey && process.env[envKey]) || config.ai?.apiKey);
-}
-
-export async function completeWithAi({ systemPrompt, userPrompt, config, model }) {
-  const provider = String(config.ai?.provider ?? 'gemini').toLowerCase();
-  const aiDefaults = AI_PROVIDER_DEFAULTS[provider];
-
-  if (!aiDefaults) {
-    throw new CliError(`Unsupported AI provider: ${provider}`);
-  }
-
-  const selectedModel = model ?? config.ai?.model ?? aiDefaults.model;
-  const temperature = Number(config.ai?.temperature ?? 0.7);
-  const maxTokens = Number(config.ai?.maxTokens ?? 2048);
-
-  try {
-    if (provider === 'openai') {
-      return await completeWithOpenAi({ systemPrompt, userPrompt, model: selectedModel, temperature, maxTokens, config });
-    }
-
-    if (provider === 'ollama') {
-      return await completeWithOllama({ systemPrompt, userPrompt, model: selectedModel, temperature, maxTokens });
-    }
-
-    return await completeWithGemini({ systemPrompt, userPrompt, model: selectedModel, temperature, maxTokens, config });
-  } catch (error) {
-    if (error instanceof CliError) {
-      throw error;
-    }
-    throw normalizeAiError(error, provider);
-  }
-}
-
-async function completeWithOpenAi({ systemPrompt, userPrompt, model, temperature, maxTokens, config }) {
-  const apiKey = process.env.OPENAI_API_KEY ?? config.ai?.apiKey;
-  if (!apiKey) {
-    throw new AiConfigError('openai');
-  }
-
-  const { data } = await axios.post('https://api.openai.com/v1/chat/completions', {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature,
-    max_tokens: maxTokens,
-  }, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    timeout: 60_000,
-  });
-
-  return data.choices?.[0]?.message?.content?.trim() ?? '';
-}
-
-async function completeWithGemini({ systemPrompt, userPrompt, model, temperature, maxTokens, config }) {
-  const apiKey = process.env.GEMINI_API_KEY ?? config.ai?.apiKey;
-  if (!apiKey) {
-    throw new AiConfigError('gemini');
-  }
-
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const { data } = await axios.post(`${endpoint}?key=${apiKey}`, {
-    systemInstruction: {
-      parts: [{ text: systemPrompt }],
-    },
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: userPrompt }],
-      },
-    ],
-    generationConfig: {
-      temperature,
-      maxOutputTokens: maxTokens,
-    },
-  }, {
-    timeout: 60_000,
-  });
-
-  return data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim() ?? '';
-}
-
-async function completeWithOllama({ systemPrompt, userPrompt, model, temperature, maxTokens }) {
-  const { data } = await axios.post('http://localhost:11434/api/generate', {
-    model,
-    prompt: `${systemPrompt}\n\n${userPrompt}`,
-    stream: false,
-    options: {
-      temperature,
-      num_predict: maxTokens,
-    },
-  }, {
-    timeout: 120_000,
-  });
-
-  return data.response?.trim() ?? '';
-}
-
-function normalizeAiError(error, provider) {
-  if (error.response?.status === 401 || error.response?.status === 403) {
-    return new CliError(`Authentication failed for ${provider}. Check your API key.`, { cause: error });
-  }
-
-  if (error.response?.status === 429) {
-    const retryAfter = error.response.headers?.['retry-after'];
-    const suffix = retryAfter ? ` Try again after ${retryAfter} seconds.` : ' Try again later.';
-    return new CliError(`Rate limited by ${provider}.${suffix}`, { cause: error });
-  }
-
-  if (error.code === 'ECONNABORTED') {
-    return new CliError(`Request to ${provider} timed out.`, { cause: error });
-  }
-
-  if (!error.response) {
-    return new CliError(`Could not reach ${provider}. Check your internet connection or provider service.`, { cause: error });
-  }
-
-  return new CliError(`AI request failed: ${error.response.status} ${error.response.statusText ?? ''}`.trim(), {
-    cause: error,
-  });
-}
 
 export async function runWithSpinner(message, task) {
   const spinner = ora(message).start();
@@ -460,7 +409,7 @@ export function handleCommandError(error) {
   const color = error instanceof AiConfigError ? chalk.yellow : chalk.red;
   console.error(color(message));
 
-  if (!(error instanceof CliError) && error.stack && process.env.kaks_DEBUG) {
+  if (!(error instanceof CliError) && error.stack && process.env.perky_DEBUG) {
     console.error(chalk.dim(error.stack));
   }
 

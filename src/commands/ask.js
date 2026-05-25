@@ -1,19 +1,15 @@
 import inquirer from 'inquirer';
 
+import { buildAskPrompt } from '../ai/prompt.js';
+import { completeWithAi } from '../ai/provider.js';
+import { printStream, streamWithAi } from '../ai/stream.js';
 import {
-  completeWithAi,
   copyToClipboard,
   handleCommandError,
   loadGlobalConfig,
   loadLocalConfig,
   runWithSpinner,
 } from './shared.js';
-
-const SYSTEM_PROMPT = [
-  'You are a senior developer assistant.',
-  'Answer concisely, use markdown when helpful, and include code examples for coding questions.',
-  'Prefer practical, directly usable guidance.',
-].join(' ');
 
 export function registerAskCommand(program) {
   program
@@ -25,8 +21,8 @@ export function registerAskCommand(program) {
     .addHelpText('after', `
 
 Examples:
-  $ kaks ask "How do I read a file async in Node.js?"
-  $ kaks ask --model gpt-4o-mini "Explain Promise.allSettled"
+  $ perky ask "How do I read a file async in Node.js?"
+  $ perky ask --model gpt-4o-mini "Explain Promise.allSettled"
 `)
     .action(async (questionParts = [], options) => {
       try {
@@ -42,18 +38,33 @@ export async function ask(questionParts = [], options = {}) {
   const config = await loadGlobalConfig();
   const localConfig = await loadLocalConfig();
 
-  const context = localConfig?.ai?.context
-    ? `\n\nProject context:\n${localConfig.ai.context}`
-    : '';
+  const projectContext = localConfig?.ai?.context ?? '';
+  const { systemPrompt, userPrompt } = buildAskPrompt(question, projectContext);
 
-  const answer = await runWithSpinner('Reading...', () => completeWithAi({
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt: `${question}${context}`,
-    config,
-    model: options.model,
-  }));
+  let answer;
 
-  console.log(`\n${answer}\n`);
+  if (options.stream === false) {
+    // Non-streaming: show spinner, get complete response
+    answer = await runWithSpinner('Reading...', () => completeWithAi({
+      systemPrompt,
+      userPrompt,
+      config,
+      model: options.model,
+    }));
+
+    console.log(`\n${answer}\n`);
+  } else {
+    // Streaming: print tokens in real-time
+    console.log('');
+    const stream = streamWithAi({
+      systemPrompt,
+      userPrompt,
+      config,
+      model: options.model,
+    });
+    answer = await printStream(stream);
+    console.log('');
+  }
 
   if (options.copy) {
     await copyToClipboard(answer);

@@ -22,13 +22,13 @@ const PROVIDERS = {
 export function registerInitCommand(program) {
   program
     .command('init')
-    .description('Run first-time kaks setup')
-    .option('--force', 'Overwrite existing global kaks config')
+    .description('Run first-time perky setup')
+    .option('--force', 'Overwrite existing global perky config')
     .addHelpText('after', `
 
 Examples:
-  $ kaks init
-  $ kaks init --force
+  $ perky init
+  $ perky init --force
 `)
     .action(async (options) => {
       try {
@@ -40,7 +40,7 @@ Examples:
 }
 
 export async function init(options = {}) {
-  console.log('kaks-cli setup\n');
+  console.log('perky-cli setup\n');
 
   if (await pathExists(CONFIG_PATH)) {
     const shouldContinue = options.force || (await inquirer.prompt([
@@ -142,7 +142,7 @@ export async function init(options = {}) {
   if (provider.envKey && setupAnswers.apiKey) {
     console.log(`Updated .env with ${provider.envKey}.`);
   }
-  console.log('Setup complete. Try: kaks ask "What can you do?"');
+  console.log('Setup complete. Try: perky ask "What can you do?"');
 }
 
 async function upsertEnvValue(envPath, key, value) {

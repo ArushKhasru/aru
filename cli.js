@@ -18,7 +18,7 @@ import { CONFIG_PATH, pathExists } from './src/commands/shared.js';
 const program = new Command();
 
 program
-  .name('kaks')
+  .name('perky')
   .description('AI-powered developer assistant and workspace launcher')
   .version('0.0.1')
   .showHelpAfterError()
@@ -26,13 +26,13 @@ program
   .addHelpText('after', `
 
 Examples:
-  $ kaks init
-  $ kaks ask "How do I read a file async in Node.js?"
-  $ kaks explain package.json
-  $ kaks summarize app.log --tail 200
-  $ kaks open myapp
-  $ kaks start myapp
-  $ kaks go github.com
+  $ perky init
+  $ perky ask "How do I read a file async in Node.js?"
+  $ perky explain package.json
+  $ perky summarize app.log --tail 200
+  $ perky open myapp
+  $ perky start myapp
+  $ perky go github.com
 `);
 
 registerAskCommand(program);
@@ -46,8 +46,8 @@ registerInitCommand(program);
 
 if (process.argv.length <= 2) {
   if (!(await pathExists(CONFIG_PATH))) {
-    console.log('Welcome to kaks-cli.');
-    console.log('It looks like this is your first time. Run: kaks init\n');
+    console.log('Welcome to perky-cli.');
+    console.log('It looks like this is your first time. Run: perky init\n');
   }
 
   program.outputHelp();

@@ -1,13 +1,12 @@
 import process from 'node:process';
 
-import { execa } from 'execa';
-
 import { CliError } from '../commands/shared.js';
+import { launchDetached } from './process.js';
 
 export function normalizeUrl(input) {
   const trimmed = String(input ?? '').trim();
   if (!trimmed) {
-    throw new CliError('Missing URL. Try: kaks go example.com');
+    throw new CliError('Missing URL. Try: perky go example.com');
   }
 
   if (/^https?:\/\//i.test(trimmed)) {
@@ -33,15 +32,13 @@ export function assertValidUrl(url) {
       throw new Error('Invalid URL');
     }
   } catch (error) {
-    throw new CliError("Doesn't look like a valid URL. Try: kaks go example.com", { cause: error });
+    throw new CliError("Doesn't look like a valid URL. Try: perky go example.com", { cause: error });
   }
 }
 
 export async function openTarget(target, browser = 'default') {
   const { command, args } = getOpenCommand(target, browser);
-  const child = execa(command, args, { detached: true, stdio: 'ignore' });
-  child.unref?.();
-  await child;
+  await launchDetached(command, args);
 }
 
 export function getOpenCommand(target, browser = 'default') {

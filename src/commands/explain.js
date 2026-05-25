@@ -1,10 +1,6 @@
-import { CliError, completeWithAi, detectLanguage, handleCommandError, loadGlobalConfig, readTextFileWithLimits, runWithSpinner } from './shared.js';
-
-const SYSTEM_PROMPT = [
-  'You are a code and configuration file explainer.',
-  'Explain the file in plain English for a developer.',
-  'Cover purpose, structure, important sections, and any risks or noteworthy details.',
-].join(' ');
+import { buildExplainPrompt } from '../ai/prompt.js';
+import { completeWithAi } from '../ai/provider.js';
+import { CliError, detectLanguage, handleCommandError, loadGlobalConfig, readTextFileWithLimits, runWithSpinner } from './shared.js';
 
 const VALID_DETAIL_LEVELS = new Set(['low', 'medium', 'high']);
 
@@ -18,9 +14,9 @@ export function registerExplainCommand(program) {
     .addHelpText('after', `
 
 Examples:
-  $ kaks explain docker-compose.yml
-  $ kaks explain package.json --detail high
-  $ kaks explain src/app.js --section middleware
+  $ perky explain docker-compose.yml
+  $ perky explain package.json --detail high
+  $ perky explain src/app.js --section middleware
 `)
     .action(async (filepath, options) => {
       try {
@@ -53,23 +49,16 @@ export async function explain(filepath, options = {}) {
 
   const config = await loadGlobalConfig();
   const language = detectLanguage(file.absolutePath);
-  const section = options.section ? `\nFocus only on this section or topic: ${options.section}` : '';
 
-  const prompt = [
-    `File: ${file.displayPath}`,
-    `Detected format: ${language}`,
-    `Detail level: ${detail}`,
-    section,
-    '',
-    'Content:',
-    `\`\`\`${language}`,
-    file.content,
-    '```',
-  ].filter(Boolean).join('\n');
+  const { systemPrompt, userPrompt } = buildExplainPrompt(file, {
+    language,
+    detail,
+    section: options.section,
+  });
 
   const explanation = await runWithSpinner(`Reading ${file.displayPath}...`, () => completeWithAi({
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt: prompt,
+    systemPrompt,
+    userPrompt,
     config,
     model: options.model,
   }));

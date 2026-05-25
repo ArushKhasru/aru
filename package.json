@@ -1,25 +1,25 @@
 {
-  "name": "@theonlykaks/kaks",
+  "name": "perky",
   "version": "0.0.1",
-  "description": "Hello_to_the_cli",
+  "description": "Hello_cli_perky_here",
   "keywords": [],
-  "homepage": "https://github.com/ArushKhasru/kaks#readme",
+  "homepage": "https://github.com/ArushKhasru/perky#readme",
   "bugs": {
-    "url": "https://github.com/ArushKhasru/kaks/issues"
+    "url": "https://github.com/ArushKhasru/perky/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArushKhasru/kaks.git"
+    "url": "git+https://github.com/ArushKhasru/perky.git"
   },
   "license": "ISC",
-  "author": "kaks",
+  "author": "perky",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "kaks": "cli.js"
+    "perky": "cli.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
   "dependencies": {
     "axios": "^1.16.1",
